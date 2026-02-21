@@ -1,0 +1,175 @@
+<svg fill="none" viewBox="0 0 1200 400" width="1200" height="400" xmlns="http://www.w3.org/2000/svg">
+  <foreignObject width="100%" height="100%">
+    <div xmlns="http://www.w3.org/1999/xhtml">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .scene {
+          width: 1200px;
+          height: 400px;
+          background: linear-gradient(135deg, #060612 0%, #0d0d2b 40%, #1a1045 70%, #060612 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          overflow: hidden;
+          font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        .grid {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 200px;
+          background: linear-gradient(transparent 0%, rgba(59, 130, 246, 0.03) 100%);
+          background-size: 40px 40px;
+          background-image:
+            linear-gradient(rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
+          transform: perspective(400px) rotateX(45deg);
+          transform-origin: bottom;
+          animation: gridMove 8s linear infinite;
+        }
+        @keyframes gridMove {
+          0% { background-position: 0 0; }
+          100% { background-position: 40px 40px; }
+        }
+        .content {
+          position: relative;
+          z-index: 2;
+          text-align: center;
+        }
+        .logo {
+          display: inline-flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+        .logo-box {
+          width: 56px;
+          height: 56px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #3b82f6, #6366f1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          font-weight: 800;
+          color: white;
+          box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+          animation: pulse 3s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.4); }
+          50% { box-shadow: 0 0 50px rgba(99, 102, 241, 0.6); }
+        }
+        .title {
+          font-size: 48px;
+          font-weight: 800;
+          background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 50%, #818cf8 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          letter-spacing: -1px;
+        }
+        .subtitle {
+          font-size: 18px;
+          color: rgba(255, 255, 255, 0.5);
+          margin-bottom: 28px;
+          font-weight: 400;
+          letter-spacing: 0.5px;
+        }
+        .agents {
+          display: flex;
+          gap: 24px;
+          justify-content: center;
+        }
+        .agent {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          animation: float 4s ease-in-out infinite;
+        }
+        .agent:nth-child(1) { animation-delay: 0s; }
+        .agent:nth-child(2) { animation-delay: 0.4s; }
+        .agent:nth-child(3) { animation-delay: 0.8s; }
+        .agent:nth-child(4) { animation-delay: 1.2s; }
+        .agent:nth-child(5) { animation-delay: 1.6s; }
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-6px); }
+        }
+        .agent-dot {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+        }
+        .agent-label {
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.4);
+          font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .pm .agent-dot { background: rgba(234, 179, 8, 0.2); border: 2px solid #eab308; }
+        .fe .agent-dot { background: rgba(59, 130, 246, 0.2); border: 2px solid #3b82f6; }
+        .be .agent-dot { background: rgba(34, 197, 94, 0.2); border: 2px solid #22c55e; }
+        .ds .agent-dot { background: rgba(236, 72, 153, 0.2); border: 2px solid #ec4899; }
+        .qa .agent-dot { background: rgba(249, 115, 22, 0.2); border: 2px solid #f97316; }
+        .orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(60px);
+          opacity: 0.15;
+          animation: drift 10s ease-in-out infinite alternate;
+        }
+        .orb1 { width: 300px; height: 300px; background: #3b82f6; top: -100px; left: -50px; }
+        .orb2 { width: 250px; height: 250px; background: #6366f1; bottom: -80px; right: -30px; animation-delay: 3s; }
+        .orb3 { width: 200px; height: 200px; background: #ec4899; top: 50px; right: 200px; animation-delay: 6s; }
+        @keyframes drift {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(30px, 20px); }
+        }
+      </style>
+      <div class="scene">
+        <div class="orb orb1"></div>
+        <div class="orb orb2"></div>
+        <div class="orb orb3"></div>
+        <div class="grid"></div>
+        <div class="content">
+          <div class="logo">
+            <div class="logo-box">AI</div>
+            <span class="title">Dev Agency</span>
+          </div>
+          <div class="subtitle">Watch AI agents build real software in a 3D office</div>
+          <div class="agents">
+            <div class="agent pm">
+              <div class="agent-dot">PM</div>
+              <span class="agent-label">Manager</span>
+            </div>
+            <div class="agent ds">
+              <div class="agent-dot">UI</div>
+              <span class="agent-label">Designer</span>
+            </div>
+            <div class="agent fe">
+              <div class="agent-dot">FE</div>
+              <span class="agent-label">Frontend</span>
+            </div>
+            <div class="agent be">
+              <div class="agent-dot">BE</div>
+              <span class="agent-label">Backend</span>
+            </div>
+            <div class="agent qa">
+              <div class="agent-dot">QA</div>
+              <span class="agent-label">Tester</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </foreignObject>
+</svg>
