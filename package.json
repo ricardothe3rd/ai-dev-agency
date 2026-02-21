@@ -1,0 +1,79 @@
+{
+  "name": "ai-dev-agency",
+  "version": "0.1.0",
+  "description": "3D visual AI development agency — watch a team of Claude-powered agents build real software",
+  "type": "module",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx watch src/server/index.ts",
+    "dev:client": "vite",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "build:electron": "npm run build && tsc -p electron/tsconfig.json",
+    "start": "node dist/server/index.js",
+    "electron": "npm run build:electron && electron .",
+    "electron:dev": "NODE_ENV=development electron .",
+    "package": "npm run build:electron && electron-builder",
+    "package:mac": "npm run build:electron && electron-builder --mac",
+    "package:win": "npm run build:electron && electron-builder --win",
+    "package:linux": "npm run build:electron && electron-builder --linux"
+  },
+  "author": "Ricardo Argana",
+  "license": "MIT",
+  "build": {
+    "appId": "com.ai-dev-agency",
+    "productName": "AI Dev Agency",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "output/**/*",
+      "node_modules/**/*",
+      ".env"
+    ],
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@tailwindcss/vite": "^4.2.0",
+    "better-sqlite3": "^12.6.2",
+    "concurrently": "^9.2.1",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwindcss": "^4.2.0",
+    "three": "^0.183.1",
+    "tsx": "^4.21.0",
+    "ws": "^8.19.0",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.183.1",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}
