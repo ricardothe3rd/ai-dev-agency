@@ -6,6 +6,8 @@ import type {
   WSEvent,
   ToolResult,
 } from "../types.js";
+import type { MessageBus } from "../comms/channel.js";
+import type { MemoryStore } from "../memory/store.js";
 
 export interface AgentConfig {
   role: AgentRole;
@@ -24,18 +26,27 @@ export class BaseAgent {
   private model: string;
   private conversationHistory: Anthropic.MessageParam[] = [];
   private emit: EventEmitter;
+  private messageBus: MessageBus;
+  private store: MemoryStore;
   private outputDir: string = "";
   status: AgentStatus = "idle";
   currentTask: Task | null = null;
   location: string;
 
-  constructor(config: AgentConfig, emit: EventEmitter) {
+  constructor(
+    config: AgentConfig,
+    emit: EventEmitter,
+    messageBus: MessageBus,
+    store: MemoryStore
+  ) {
     this.role = config.role;
     this.name = config.name;
     this.systemPrompt = config.systemPrompt;
     this.model = config.model || "claude-sonnet-4-20250514";
     this.client = new Anthropic();
     this.emit = emit;
+    this.messageBus = messageBus;
+    this.store = store;
     this.location = `${config.role}-desk`;
   }
 
@@ -90,7 +101,7 @@ export class BaseAgent {
       {
         name: "send_message",
         description:
-          "Send a message to another agent on the team. Use for coordination, questions, and handoffs.",
+          "Send a message to another agent on the team. The message will be delivered to them and they will process it.",
         input_schema: {
           type: "object" as const,
           properties: {
@@ -113,19 +124,34 @@ export class BaseAgent {
       {
         name: "update_task",
         description:
-          "Update the status of a task on the board. Use when starting, completing, or blocking a task.",
+          "Create or update a task on the board. Include title and description when creating new tasks.",
         input_schema: {
           type: "object" as const,
           properties: {
-            taskId: { type: "string", description: "The task ID" },
+            taskId: { type: "string", description: "The task ID (e.g. task-1)" },
             status: {
               type: "string",
               enum: ["pending", "in_progress", "review", "done", "blocked"],
-              description: "New task status",
+              description: "Task status",
             },
-            notes: {
+            title: {
               type: "string",
-              description: "Optional notes about the update",
+              description: "Task title (required when creating a new task)",
+            },
+            description: {
+              type: "string",
+              description: "Detailed description of what needs to be done",
+            },
+            assignee: {
+              type: "string",
+              enum: [
+                "pm",
+                "frontend-dev",
+                "backend-dev",
+                "designer",
+                "qa-tester",
+              ],
+              description: "Which agent role this task is assigned to",
             },
           },
           required: ["taskId", "status"],
@@ -211,30 +237,49 @@ export class BaseAgent {
         }
       }
       case "send_message": {
+        // Emit to UI
         this.emit({
           type: "message",
           from: this.role,
           to: input.to as AgentRole,
           text: input.message,
         });
+        // Persist to database
+        this.store.saveMessage(this.role, input.to, input.message);
+        // Actually deliver to the receiving agent via MessageBus
+        this.messageBus.send(this.role, input.to as AgentRole, input.message);
         return { success: true, data: `Message sent to ${input.to}` };
       }
       case "update_task": {
-        this.emit({
-          type: "task_update",
-          task: {
+        const now = new Date().toISOString();
+        const assignee = (input.assignee as AgentRole) || this.role;
+        const existing = this.store.getTask(input.taskId);
+
+        let task: Task;
+        if (existing) {
+          // Update existing task
+          const updates: Partial<Task> = { status: input.status as Task["status"] };
+          if (input.title) updates.title = input.title;
+          if (input.description) updates.description = input.description;
+          if (input.assignee) updates.assignee = input.assignee as AgentRole;
+          task = this.store.updateTask(input.taskId, updates)!;
+        } else {
+          // Create new task
+          task = this.store.createTask({
             id: input.taskId,
-            title: "",
-            description: "",
-            assignee: this.role,
+            title: input.title || input.taskId,
+            description: input.description || "",
+            assignee,
             status: input.status as Task["status"],
             priority: 0,
-            createdAt: "",
-            updatedAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
             dependencies: [],
             files: [],
-          },
-        });
+          });
+        }
+
+        this.emit({ type: "task_update", task });
         return { success: true, data: `Task ${input.taskId} → ${input.status}` };
       }
       case "list_files": {
@@ -333,7 +378,7 @@ export class BaseAgent {
     this.currentTask = task;
     this.setStatus("working");
     return this.handleMessage(
-      `You have been assigned a new task:\n\nTask ID: ${task.id}\nTitle: ${task.title}\nDescription: ${task.description}\nPriority: ${task.priority}\n\nPlease complete this task. Use the available tools to write code, communicate with other agents, and update the task status.`
+      `You have been assigned a new task:\n\nTask ID: ${task.id}\nTitle: ${task.title}\nDescription: ${task.description}\nPriority: ${task.priority}\n\nPlease complete this task. Use the available tools to write code, communicate with other agents, and update the task status when you're done.`
     );
   }
 

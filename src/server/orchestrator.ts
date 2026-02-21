@@ -9,7 +9,7 @@ import type { AgentRole, ProjectBrief, Task, WSEvent } from "./types.js";
 export class Orchestrator {
   private agents = new Map<AgentRole, BaseAgent>();
   private messageBus: MessageBus;
-  private store: MemoryStore;
+  readonly store: MemoryStore;
   private emit: EventEmitter;
   private outputBase: string;
   private currentProject: string | null = null;
@@ -20,7 +20,7 @@ export class Orchestrator {
     this.store = new MemoryStore();
     this.messageBus = new MessageBus(emit);
 
-    // Create all agents
+    // Create all agents with shared MessageBus and MemoryStore
     const roles: AgentRole[] = ["pm", "frontend-dev", "backend-dev", "designer", "qa-tester"];
     for (const role of roles) {
       const agent = new BaseAgent(
@@ -29,7 +29,9 @@ export class Orchestrator {
           name: AGENT_PROMPTS[role].name,
           systemPrompt: AGENT_PROMPTS[role].prompt,
         },
-        emit
+        emit,
+        this.messageBus,
+        this.store
       );
       this.agents.set(role, agent);
       this.messageBus.register(role, (from, msg) => agent.receiveMessage(from, msg));
@@ -53,52 +55,103 @@ export class Orchestrator {
     this.store.clearTasks();
     this.store.createProject(brief.projectName, brief.description, projectDir);
 
-    // Step 1: PM creates the plan
+    // ── Step 1: PM creates the plan and tasks ──
     const pm = this.agents.get("pm")!;
-    this.emit({
-      type: "agent_move",
-      agent: "pm",
-      destination: "whiteboard",
-    });
+    this.emit({ type: "agent_move", agent: "pm", destination: "whiteboard" });
 
-    const planResponse = await pm.handleMessage(
-      `New project brief from the boss:\n\n"${brief.description}"\n\nProject name: ${brief.projectName}\n\nCreate a detailed project plan. Break it down into specific tasks and assign each to the appropriate team member:\n- frontend-dev: UI components, pages, styling\n- backend-dev: APIs, database, server logic\n- designer: UI/UX structure, component hierarchy, design decisions\n- qa-tester: testing, bug finding\n\nFor each task, use the update_task tool to create it on the board. Use task IDs like "task-1", "task-2", etc.\n\nAfter creating the plan, send a summary message to each team member about what they need to do.`
+    await pm.handleMessage(
+      `New project brief from the boss:\n\n"${brief.description}"\n\nProject name: ${brief.projectName}\n\nCreate a detailed project plan. Break it into specific tasks and create each one using the update_task tool. For EVERY task:\n- Use a clear task ID (task-1, task-2, etc.)\n- Include a descriptive title\n- Include a detailed description of what needs to be done\n- Assign it to the right team member using the assignee field:\n  - "frontend-dev" for UI components, pages, styling\n  - "backend-dev" for APIs, database, server logic\n  - "designer" for UI/UX specs, component hierarchy, design decisions\n  - "qa-tester" for testing and quality assurance\n- Set status to "pending"\n\nAfter creating all tasks, send a summary message to each team member about their assignments.`
     );
 
-    // Step 2: Designer creates the design spec
-    const designer = this.agents.get("designer")!;
-    this.emit({ type: "agent_move", agent: "designer", destination: "designer-desk" });
+    // ── Step 2: Read tasks from DB ──
+    const allTasks = this.store.getAllTasks();
+    const tasksByRole = new Map<AgentRole, Task[]>();
+    for (const task of allTasks) {
+      if (task.assignee) {
+        const existing = tasksByRole.get(task.assignee) || [];
+        existing.push(task);
+        tasksByRole.set(task.assignee, existing);
+      }
+    }
 
-    await designer.handleMessage(
-      `The PM has created a project plan for "${brief.projectName}": ${brief.description}\n\nPlan summary: ${planResponse.slice(0, 1000)}\n\nCreate the UI/UX design specification. Define the component hierarchy, layout structure, color scheme, and key design decisions. Write a design-spec.md file with your recommendations. Then send the key decisions to the frontend-dev.`
-    );
+    // ── Step 3: Designer works first (design informs frontend) ──
+    const designerTasks = tasksByRole.get("designer") || [];
+    if (designerTasks.length > 0) {
+      const designer = this.agents.get("designer")!;
+      this.emit({ type: "agent_move", agent: "designer", destination: "designer-desk" });
+      for (const task of designerTasks) {
+        await designer.assignTask(task);
+      }
+    }
 
-    // Step 3: Backend dev sets up the project structure
-    const backendDev = this.agents.get("backend-dev")!;
-    this.emit({ type: "agent_move", agent: "backend-dev", destination: "backend-dev-desk" });
+    // ── Step 4: Backend + Frontend in parallel ──
+    const backendTasks = tasksByRole.get("backend-dev") || [];
+    const frontendTasks = tasksByRole.get("frontend-dev") || [];
 
-    const backendWork = backendDev.handleMessage(
-      `You're working on "${brief.projectName}": ${brief.description}\n\nSet up the backend/API layer. Create the necessary files for the server, database models, and API routes. Make sure to create a package.json with the right dependencies.`
-    );
+    const backendWork = (async () => {
+      if (backendTasks.length === 0) return;
+      const backend = this.agents.get("backend-dev")!;
+      this.emit({ type: "agent_move", agent: "backend-dev", destination: "backend-dev-desk" });
+      for (const task of backendTasks) {
+        await backend.assignTask(task);
+      }
+    })();
 
-    // Step 4: Frontend dev builds the UI (can run in parallel with backend)
-    const frontendDev = this.agents.get("frontend-dev")!;
-    this.emit({ type: "agent_move", agent: "frontend-dev", destination: "frontend-dev-desk" });
+    const frontendWork = (async () => {
+      if (frontendTasks.length === 0) return;
+      const frontend = this.agents.get("frontend-dev")!;
+      this.emit({ type: "agent_move", agent: "frontend-dev", destination: "frontend-dev-desk" });
+      // Give frontend the design context if available
+      const designSpec = this.tryReadFile(projectDir, "design-spec.md");
+      if (designSpec) {
+        await frontend.handleMessage(
+          `The designer has created a design specification:\n\n${designSpec.slice(0, 2000)}\n\nKeep this in mind as you work on your tasks.`
+        );
+      }
+      for (const task of frontendTasks) {
+        await frontend.assignTask(task);
+      }
+    })();
 
-    const frontendWork = frontendDev.handleMessage(
-      `You're working on "${brief.projectName}": ${brief.description}\n\nBuild the frontend UI. Create React components, pages, and styling. Check if a design-spec.md exists and follow its guidance. Create all necessary source files.`
-    );
-
-    // Wait for both to finish
     await Promise.all([backendWork, frontendWork]);
 
-    // Step 5: QA reviews
+    // ── Step 5: QA review ──
     const qa = this.agents.get("qa-tester")!;
     this.emit({ type: "agent_move", agent: "qa-tester", destination: "qa-tester-desk" });
 
-    await qa.handleMessage(
-      `The team has finished building "${brief.projectName}". Review the project:\n1. Use list_files to see all files\n2. Read key files to check for issues\n3. If there's a package.json, try running the project\n4. Report any bugs or issues by sending messages to the appropriate developer\n5. Write a review-notes.md with your findings`
-    );
+    const qaTasks = tasksByRole.get("qa-tester") || [];
+    if (qaTasks.length > 0) {
+      for (const task of qaTasks) {
+        await qa.assignTask(task);
+      }
+    } else {
+      // No explicit QA tasks — tell QA to do a general review
+      await qa.handleMessage(
+        `The team has finished building "${brief.projectName}". Do a full review:\n1. Use list_files to see all project files\n2. Read key files to check for issues\n3. If there's a package.json, check dependencies are correct\n4. Report any bugs by sending messages to the responsible developer\n5. Write a review-notes.md with your findings\n6. Update any relevant task statuses`
+      );
+    }
+
+    // ── Step 6: Feedback loop (one iteration) ──
+    const tasksAfterQA = this.store.getAllTasks();
+    const blockedTasks = tasksAfterQA.filter((t) => t.status === "blocked");
+
+    if (blockedTasks.length > 0) {
+      // Re-assign blocked tasks to the responsible devs
+      for (const task of blockedTasks) {
+        if (task.assignee && this.agents.has(task.assignee)) {
+          const agent = this.agents.get(task.assignee)!;
+          this.emit({ type: "agent_move", agent: task.assignee, destination: `${task.assignee}-desk` });
+          await agent.handleMessage(
+            `QA has found issues with your task "${task.title}" (${task.id}). Please review your work, fix the issues, and update the task status when done.`
+          );
+        }
+      }
+
+      // QA re-reviews
+      await qa.handleMessage(
+        `The developers have addressed the blocked tasks. Please re-review the fixes and update task statuses accordingly.`
+      );
+    }
 
     this.emit({
       type: "project_complete",
@@ -111,10 +164,9 @@ export class Orchestrator {
 
   async bossCommand(text: string) {
     this.emit({ type: "boss_command", text });
-    // Route boss commands to PM first
     const pm = this.agents.get("pm")!;
     return pm.handleMessage(
-      `[BOSS COMMAND]: ${text}\n\nThe boss has given a new directive. Coordinate with the team to handle this. Send messages to the appropriate agents.`
+      `[BOSS COMMAND]: ${text}\n\nThe boss has given a new directive. Coordinate with the team to handle this. Create new tasks if needed and send messages to the appropriate agents.`
     );
   }
 
@@ -138,5 +190,14 @@ export class Orchestrator {
 
   shutdown() {
     this.store.close();
+  }
+
+  private tryReadFile(projectDir: string, filename: string): string | null {
+    const filePath = path.join(projectDir, filename);
+    try {
+      return fs.readFileSync(filePath, "utf-8");
+    } catch {
+      return null;
+    }
   }
 }
